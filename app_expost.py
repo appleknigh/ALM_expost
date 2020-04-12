@@ -10,7 +10,33 @@ from dash.dependencies import Input, Output, State
 import dash_html_components as html
 import dash_core_components as dcc
 import dash
-import Stochastic_backend_beta as BE
+import utility_expost as utility
+import time
+
+#%% Run workers
+from rq import Queue
+from worker import conn
+q = Queue(connection=conn)
+
+#%%
+job_getfit = q.enqueue(utility.getfit, t1='2019-01-01',t2='2020-12-31')
+
+t0 = time.time()
+while job_getfit.result is None:
+    t1 = time.time()
+    t2 = t1-t0
+    time.sleep(5)
+    print('waiting: {}'.format(t2))
+
+print('Finished! Time elapse: {}'.format(t2))
+df_getfit = job_getfit.result
+
+
+#%%
+df_stochastic = utility.stoc_simulate(df_getfit)
+df_forcast = utility.forecast(df_getfit,df_stochastic)
+df_PVCF = utility.PVCashflow_AL(df_forcast,bond_weight=[1.8, 0.2, 2.5])
+f = utility.graph(df_forcast,df_PVCF)
 
 #%% Dash start up
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
@@ -40,15 +66,15 @@ navbar = dbc.NavbarSimple(
 Graph = dbc.Col([
     dcc.Graph(
         id='graph_YCSimulate', 
-        figure=BE.f_stochastic,
+        figure=f,
         style={'height':'600px'})])
 
 StocLab_Timer = dcc.Slider(
             id='t_range',
             min=0,
-            max=BE.t_cal.shape[0]-1,
+            max=df_getfit['t_cal'].shape[0]-1,
             step=1,
-            value=BE.t_cal.shape[0]-1,)
+            value=df_getfit['t_cal'].shape[0]-1,)
 
 YC_Shock_RatioButton = dcc.RadioItems(
     options=[
