@@ -178,9 +178,7 @@ body = dbc.Container(
                                              children='Risk: _ 5perc FR'),
                                     # Return: YTM
                                     html.Div(
-                                        id='Sharpe', children='Sharpe: _'),
-                                    html.Div(
-                                        id='prob_range_select', children='Scenario Percentile')]
+                                        id='Sharpe', children='Sharpe: _')
                             ),
                             dcc.Tab(
                                 label='VaR', children=[
