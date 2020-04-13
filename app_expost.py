@@ -19,7 +19,7 @@ from worker import conn
 q = Queue(connection=conn)
 
 #%%
-job_getfit = q.enqueue(utility.getfit, t1='2019-01-01',t2='2020-12-31')
+job_getfit = q.enqueue(utility.getfit, t1='2020-01-01', t2='2020-12-31')
 
 t0 = time.time()
 while job_getfit.result is None:
@@ -34,9 +34,9 @@ df_getfit = job_getfit.result
 
 #%%
 df_stochastic = utility.stoc_simulate(df_getfit)
-df_forcast = utility.forecast(df_getfit,df_stochastic)
-df_PVCF = utility.PVCashflow_AL(df_forcast,bond_weight=[1.8, 0.2, 2.5])
-f = utility.graph(df_forcast,df_PVCF)
+df_forcast = utility.forecast(df_getfit, df_stochastic)
+df_PVCF = utility.PVCashflow_AL(df_forcast, bond_weight=[1.8, 0.2, 2.5])
+f = utility.graph(df_forcast, df_PVCF)
 
 #%% Dash start up
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
@@ -65,16 +65,16 @@ navbar = dbc.NavbarSimple(
 
 Graph = dbc.Col([
     dcc.Graph(
-        id='graph_YCSimulate', 
+        id='graph_YCSimulate',
         figure=f,
-        style={'height':'600px'})])
+        style={'height': '600px'})])
 
 StocLab_Timer = dcc.Slider(
-            id='t_range',
-            min=0,
-            max=df_getfit['t_cal'].shape[0]-1,
-            step=1,
-            value=df_getfit['t_cal'].shape[0]-1,)
+    id='t_range',
+    min=0,
+    max=df_getfit['t_cal'].shape[0]-1,
+    step=1,
+    value=df_getfit['t_cal'].shape[0]-1,)
 
 YC_Shock_RatioButton = dcc.RadioItems(
     options=[
@@ -96,7 +96,7 @@ StocLab_DurationShock = dbc.Row(
                               type='text', value=''
                               )
                 )
-            ],style={'columnCount': 2}
+            ], style={'columnCount': 2}
         )
     ]
 )
@@ -130,11 +130,11 @@ ALM_Asset = dbc.Row(
 )
 
 ALM_Prob = dcc.Slider(
-                    id='p_range',
-                    min=0,
-                    max=1,
-                    step=0.01,
-                    value=0)
+    id='p_range',
+    min=0,
+    max=1,
+    step=0.01,
+    value=0)
 
 #%% Dash layout
 
@@ -145,46 +145,61 @@ body = dbc.Container(
             [
                 dbc.Col(
                     [html.Center(
-                            [html.H5(id='L0Col_Title', children='Base scenario')]),
+                        [html.H5(id='L0Col_Title', children='Base scenario')]),
                         html.Div(id='time_range_select',
-                                 children='Time stamp: _ '),                                 
-                        StocLab_Timer, #Base scenario (best estimate)
+                                 children='Time stamp: _ '),
+                        StocLab_Timer,  # Base scenario (best estimate)
                         html.Center(
                             [html.H5(id='LCol_Title', children='YC Shocks')]),
-                        YC_Shock_RatioButton, #Button to select whole curve or key duration shock
-                        StocLab_DurationShock, #Shock to specific duration
+                        YC_Shock_RatioButton,  # Button to select whole curve or key duration shock
+                        StocLab_DurationShock,  # Shock to specific duration
                         html.Center(
-                            [html.H5(id='L2Col_Title',children='Asset mix',style={'padding': 10})]
-                        ),
-                        ALM_Strategy_RatioButton, #Button to select strategy (custom vs duration match)
-                        ALM_Asset #Assigning initial weight
+                            [html.H5(id='L2Col_Title', children='Asset mix', style={
+                                     'padding': 10})]
+                    ),
+                        # Button to select strategy (custom vs duration match)
+                        ALM_Strategy_RatioButton,
+                        ALM_Asset  # Assigning initial weight
                         #Button to submit
-                    ], style={'border': '1px solid','margin':'20px'}
+                    ], style={'border': '1px solid', 'margin': '20px'}
                 ),
                 dbc.Col(
                     [
-                        html.Center(
-                            [html.H5(id='RCol_Title', children='ALM Analytics')]),
-                        html.Div(id='Return_Port', children='Return: _ YTM'),#Return: YTM
-                        html.Div(id='Risk_Port', children='Risk: _ 5perc FR'),#Return: YTM
-                        html.Div(id='Sharpe', children='Sharpe: _'),#Return: YTM
-                        html.Div(
-                            id='prob_range_select', children='Scenario Percentile')
-
-                    ], style={'border': '1px solid','margin':'20px'}
+                        dcc.Tabs([
+                            dcc.Tab(
+                                label='Portfolio', children=[
+                                    html.Center(
+                                        [html.H5(id='RCol_Title', children='ALM Analytics')]),
+                                    # Return: YTM
+                                    html.Div(id='Return_Port',
+                                             children='Return: _ YTM'),
+                                    # Return: YTM
+                                    html.Div(id='Risk_Port',
+                                             children='Risk: _ 5perc FR'),
+                                    # Return: YTM
+                                    html.Div(
+                                        id='Sharpe', children='Sharpe: _'),
+                                    html.Div(
+                                        id='prob_range_select', children='Scenario Percentile')]
+                            ),
+                            dcc.Tab(
+                                label='VaR', children=[
+                                    ]
+                            )
+                        ])
+                    ], style={'border': '1px solid', 'margin': '20px'}
                 )
             ]
         ),
         dbc.Row(
-            [
-                dbc.Col(
-                    html.Center(
-                        [
-                            html.Button('Submit', id='button', style={
-                                        'width': '100%', 'margin-top': '50px'})
-                        ]
-                    )
+            [dbc.Col(
+                html.Center(
+                    [
+                        html.Button('Submit', id='button', style={
+                            'width': '100%', 'margin-top': '50px'})
+                    ]
                 )
+            )
             ]
         )
     ]
@@ -198,10 +213,4 @@ app.layout = html.Div([navbar, body])
 #%% Launch
 app.run_server(debug=True)
 
-
-#x_weight = np.array([1, 1, 1])
-#res_func = lambda x: ALM_kit.optimize_duration(x,cf_bonds,t_bond_L,fit_par[0],dur_liabilities)
-#res = minimize(res_func, x_weight,method='nelder-mead',options={'xatol': 1e-8, 'disp': True})
-#print(np.abs(res.x))
-
-#%% 
+#%%
