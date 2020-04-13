@@ -20,8 +20,6 @@ import copy
 import quandl
 
 #%%
-
-
 def getfit(t1='2000-01-02', t2='2020-12-02'):
     #Load data
     df_YieldC = quandl.get(
@@ -39,7 +37,6 @@ def getfit(t1='2000-01-02', t2='2020-12-02'):
     fit_par = pd.DataFrame(np.apply_along_axis(
         lambda x: ALM_kit.ns_par(t, x), axis=1, arr=y))
     return {'df_YieldC': df_YieldC, 't_cal': t_cal.iloc[i_range], 'tact': t, 'y': y, 'fit_par': fit_par}
-
 
 def stoc_simulate(getfit_data, N=5000, nlag=8):
     #Transform tau to log scale
@@ -61,7 +58,6 @@ def stoc_simulate(getfit_data, N=5000, nlag=8):
     Var_C = results.intercept
 
     return {'Var_Rand': Var_Rand, 'Var_Betas': Var_Betas, 'Var_C': Var_C, 'nlag': nlag}
-
 
 def forecast(getfit_data, stoc_simulate_data, itime=0, N=5000, delphi=False):
     #%% Restruct stochastic scenarios
@@ -101,7 +97,6 @@ def forecast(getfit_data, stoc_simulate_data, itime=0, N=5000, delphi=False):
     return {'tfit': tfit, 'yfit_t1': yfit_t1, 'yfit_t2': yfit_t2, 'yfit_t2_stochastic': yfit_t2_stochastic,
             'Var_fit_par': Var_fit_par}
 
-
 def PVCashflow_AL(forecast_data, bond_weight=[1.8, 0.2, 2.5], N=5000):
 
     #Asset CF generate
@@ -128,9 +123,6 @@ def PVCashflow_AL(forecast_data, bond_weight=[1.8, 0.2, 2.5], N=5000):
     ACFP = np.array(ACF)[:, 0]/np.mean(np.array(ACF)[:, 0])
     LCFP = np.array(LCF)[:, 0]/np.mean(np.array(LCF)[:, 0])
     return {'cf_asset': cf_singleasset, 'cf_liability': cf_liability, 't_asset': t_bond_L, 't_liability': t_liability, 'ACFP': ACFP, 'LCFP': LCFP}
-
-#%%
-
 
 def graph(df_forcast, df_PVCF, N=5000):
     #Initiate parameters
@@ -211,32 +203,12 @@ def graph(df_forcast, df_PVCF, N=5000):
 
     return f_stochastic
 
-
-#%%
-if __name__ == '__main__':
-    df_fitdata = getfit()
-    df_stochastic = stoc_simulate(df_fitdata)
-    df_forcast = forecast(df_fitdata, df_stochastic)
-    df_PVCF = PVCashflow_AL(df_forcast, bond_weight=[1.8, 0.2, 2.5])
-    #f = graph(df_forcast,df_PVCF)
-
-#%% tables
-FR = df_PVCF['ACFP']/df_PVCF['LCFP']
-i_FR_VaR = FR.argsort()[0:np.int(np.ceil(0.05*N))]
-i_FR_WCS = FR.argsort()[np.int(np.ceil(0.05*N)-1)]
-i_FR_base = FR.argsort()[np.int(np.ceil(0.5*N)-1)]
-
-#%%
-print(FR[i_FR_VaR].mean())
-print(FR[i_FR_WCS])
-
-#%%
-def getFactorTables(df_fitdata,df_PVCF,i_base,i_shock):
+def getFactorTables(df_forcast,df_PVCF,i_base,i_shock,N_asset = 1, N_liability = 1):
     #Factor analysis
     test_asset, test_liabiltiy, dur_asset_t2, dur_liabilities_t2 = ALM_kit.FactorAnalysis(
-        np.array(df_fitdata['fit_par']), t1=i_base, t2=i_shock,
-        cf_asset=df_PVCF['cf_asset'], t_asset=df_PVCF['t_asset'],
-        cf_liability=df_PVCF['cf_liability'], t_liability=df_PVCF['t_liability'])
+        df_forcast['Var_fit_par'], t1=i_base, t2=i_shock,
+        cf_asset=df_PVCF['cf_asset']*N_asset, t_asset=df_PVCF['t_asset'],
+        cf_liability=df_PVCF['cf_liability']*N_liability, t_liability=df_PVCF['t_liability'])
 
     #Reporting
     test_asset_perc = np.append(
@@ -285,12 +257,38 @@ def getFactorTables(df_fitdata,df_PVCF,i_base,i_shock):
 
     return t_sc1, t_sc2, {'F_Asset':test_asset,'F_Liability':test_liabiltiy,'Dur_AShock':dur_asset_t2,'Dur_LShock':dur_liabilities_t2}
 
+def getALMShock(df_PVCF,N=5000,pbase=0.5,pshock=0.05):
+    FR = df_PVCF['ACFP']/df_PVCF['LCFP']
+    i_FR_WCS = FR.argsort()[np.int(np.ceil(pshock*N)-1)]
+    i_FR_base = FR.argsort()[np.int(np.ceil(pbase*N)-1)]
+
+    APV, _ = ALM_kit.PV_cashflow(cf=df_PVCF['cf_asset'],t=df_PVCF['t_asset'],fit_ns=df_fitdata['fit_par'].iloc[-1])
+    LPV, _ = ALM_kit.PV_cashflow(cf=df_PVCF['cf_liability'],t=df_PVCF['t_liability'],fit_ns=df_fitdata['fit_par'].iloc[-1])
+    n_APV = LPV/APV
+    return {'i_base':i_FR_base, 'i_shock':i_FR_WCS, 'n_A':n_APV}
+
 #%%
-
-t_sc1, t_sc2, x = getFactorTables(df_fitdata,df_PVCF,i_FR_base,i_FR_WCS)
+if __name__ == '__main__':
+    df_fitdata = getfit(t1='2020-01-01',t2='2020-12-31')
+    df_stochastic = stoc_simulate(df_fitdata)
+    df_forcast = forecast(df_fitdata, df_stochastic)
+    df_PVCF = PVCashflow_AL(df_forcast, bond_weight=[2, 1, 1])
+    #f = graph(df_forcast,df_PVCF) [1.8, 0.2, 2.5]
 
 #%%
+df_PVCF = PVCashflow_AL(df_forcast, bond_weight=[1, 1, 0])
+df_ALMShock = getALMShock(df_PVCF,pbase=0.5,pshock=0.01)
+t_sc1, t_sc2, x = getFactorTables(
+        df_forcast,df_PVCF,
+        df_ALMShock['i_base'],df_ALMShock['i_shock'],
+        N_asset=df_ALMShock['n_A'])
 
+go.Figure(data=t_sc1)
+
+#%%
+go.Figure(data=t_sc2)
+
+#%%
 #tables for portfolio analysis
 t_port = go.Table(
     header=dict(values=list(['PV', 'Asset', 'Liability', 'AL-Mismatch']),
@@ -303,27 +301,6 @@ t_port = go.Table(
                fill_color='lavender',
                align='left'))
 
-#tables for VaR scenario anaysis
-t_sc1 = go.Table(
-    header=dict(values=list(['PV', 'Asset', 'Liability', 'AL-Mismatch']),
-                fill_color='paleturquoise',
-                align='left'),
-    cells=dict(values=[['Base', 'Shock'],
-                       PV_asset_t1t2_text,
-                       PV_liabilities_t1t2_text,
-                       PV_ALMis_text],
-               fill_color='lavender',
-               align='left'))
-
-t_sc2 = go.Table(
-    header=dict(values=list(['%Movement <br>(base to shock)', 'Asset', 'Liability']),
-                fill_color='paleturquoise',
-                align='left'),
-    cells=dict(values=[['Level', 'Slope', 'Curvature', 'Tau', '<b>Total</b>'],
-                       movement_asset,
-                       movement_liability],
-               fill_color='lavender',
-               align='left'))
 
 
 # %% Exceedance probability

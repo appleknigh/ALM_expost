@@ -31,12 +31,25 @@ while job_getfit.result is None:
 print('Finished! Time elapse: {}'.format(t2))
 df_getfit = job_getfit.result
 
-
-#%%
+#%% Graph generate
 df_stochastic = utility.stoc_simulate(df_getfit)
 df_forcast = utility.forecast(df_getfit, df_stochastic)
 df_PVCF = utility.PVCashflow_AL(df_forcast, bond_weight=[1.8, 0.2, 2.5])
 f = utility.graph(df_forcast, df_PVCF)
+
+#%% Table generate
+N = 5000
+FR = df_PVCF['ACFP']/df_PVCF['LCFP']
+i_FR_VaR = FR.argsort()[0:np.int(np.ceil(0.05*N))]
+i_FR_WCS = FR.argsort()[np.int(np.ceil(0.05*N)-1)]
+i_FR_base = FR.argsort()[np.int(np.ceil(0.5*N)-1)]
+
+ACV, _ = ALM_kit.PV_cashflow(cf=df_PVCF['cf_asset'],t=df_PVCF['t_asset'],fit_ns=df_fitdata['fit_par'].iloc[i_FR_base])
+LCV, _ = ALM_kit.PV_cashflow(cf=df_PVCF['cf_liability'],t=df_PVCF['t_liability'],fit_ns=df_fitdata['fit_par'].iloc[i_FR_base])
+n_ACV = LCV/ACV
+
+t_sc1, t_sc2, x = getFactorTables(df_fitdata,df_PVCF,i_FR_base,i_FR_WCS,N_asset=n_ACV)
+
 
 #%% Dash start up
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
