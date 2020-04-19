@@ -255,9 +255,19 @@ def getFactorTables(df_forcast,df_PVCF,i_base,i_shock,N_asset = 1, N_liability =
                    fill_color='lavender',
                    align='left'))
 
-    return t_sc1, t_sc2, {'F_Asset':test_asset,'F_Liability':test_liabiltiy,'Dur_AShock':dur_asset_t2,'Dur_LShock':dur_liabilities_t2}
+    f = make_subplots(rows=3, cols=1,
+                    specs=[
+                        [{"type": "table","rowspan":1}],
+                        [{"type": "table","rowspan":2}],
+                        [None]
+                  ]
+                 )
 
-def getALMShock(df_PVCF,N=5000,pbase=0.5,pshock=0.05):
+    f.add_trace(t_sc1,row=1,col=1)
+    f.add_trace(t_sc2,row=2,col=1)
+    return f, {"t1":t_sc1,"t2":t_sc2,'F_Asset':test_asset,'F_Liability':test_liabiltiy,'Dur_AShock':dur_asset_t2,'Dur_LShock':dur_liabilities_t2}
+
+def getALMShock(df_PVCF,df_fitdata,N=5000,pbase=0.5,pshock=0.05):
     FR = df_PVCF['ACFP']/df_PVCF['LCFP']
     i_FR_WCS = FR.argsort()[np.int(np.ceil(pshock*N)-1)]
     i_FR_base = FR.argsort()[np.int(np.ceil(pbase*N)-1)]
@@ -275,31 +285,26 @@ if __name__ == '__main__':
     df_PVCF = PVCashflow_AL(df_forcast, bond_weight=[2, 1, 1])
     #f = graph(df_forcast,df_PVCF) [1.8, 0.2, 2.5]
 
-#%%
-df_PVCF = PVCashflow_AL(df_forcast, bond_weight=[1, 1, 0])
-df_ALMShock = getALMShock(df_PVCF,pbase=0.5,pshock=0.01)
-t_sc1, t_sc2, x = getFactorTables(
-        df_forcast,df_PVCF,
-        df_ALMShock['i_base'],df_ALMShock['i_shock'],
-        N_asset=df_ALMShock['n_A'])
+    df_PVCF = PVCashflow_AL(df_forcast, bond_weight=[1, 1, 0])
+    df_ALMShock = getALMShock(df_PVCF,pbase=0.5,pshock=0.01)
+    t_sc1, t_sc2, x = getFactorTables(
+            df_forcast,df_PVCF,
+            df_ALMShock['i_base'],df_ALMShock['i_shock'],
+            N_asset=df_ALMShock['n_A'])
 
-go.Figure(data=t_sc1)
+    go.Figure(data=t_sc1)
+    go.Figure(data=t_sc2)
 
-#%%
-go.Figure(data=t_sc2)
-
-#%%
-#tables for portfolio analysis
-t_port = go.Table(
-    header=dict(values=list(['PV', 'Asset', 'Liability', 'AL-Mismatch']),
-                fill_color='paleturquoise',
-                align='left'),
-    cells=dict(values=[['Base', 'Shock'],
-                       PV_asset_t1t2_text,
-                       PV_liabilities_t1t2_text,
-                       PV_ALMis_text],
-               fill_color='lavender',
-               align='left'))
+    t_port = go.Table(
+        header=dict(values=list(['PV', 'Asset', 'Liability', 'AL-Mismatch']),
+                    fill_color='paleturquoise',
+                    align='left'),
+        cells=dict(values=[['Base', 'Shock'],
+                        PV_asset_t1t2_text,
+                        PV_liabilities_t1t2_text,
+                        PV_ALMis_text],
+                fill_color='lavender',
+                align='left'))
 
 
 

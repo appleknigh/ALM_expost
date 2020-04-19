@@ -4,7 +4,8 @@ Created on Thu Feb 20 07:57:02 2020
 
 @author: 330411836
 """
-#%% Packages
+
+#%% Packages loading
 import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output, State
 import dash_html_components as html
@@ -12,22 +13,22 @@ import dash_core_components as dcc
 import dash
 import utility_expost as utility
 import time
+import numpy as np
+from CSModules import ALM_kit
 
 #%% Run workers
 from rq import Queue
 from worker import conn
 q = Queue(connection=conn)
-
-#%%
 job_getfit = q.enqueue(utility.getfit, t1='2020-01-01', t2='2020-12-31')
 
+#%% Run job - get and fit YC
 t0 = time.time()
 while job_getfit.result is None:
     t1 = time.time()
     t2 = t1-t0
     time.sleep(5)
     print('waiting: {}'.format(t2))
-
 print('Finished! Time elapse: {}'.format(t2))
 df_getfit = job_getfit.result
 
@@ -38,67 +39,33 @@ df_PVCF = utility.PVCashflow_AL(df_forcast, bond_weight=[1.8, 0.2, 2.5])
 f = utility.graph(df_forcast, df_PVCF)
 
 #%% Table generate
-N = 5000
-FR = df_PVCF['ACFP']/df_PVCF['LCFP']
-i_FR_VaR = FR.argsort()[0:np.int(np.ceil(0.05*N))]
-i_FR_WCS = FR.argsort()[np.int(np.ceil(0.05*N)-1)]
-i_FR_base = FR.argsort()[np.int(np.ceil(0.5*N)-1)]
+df_PVCF = utility.PVCashflow_AL(df_forcast, bond_weight=[1, 1, 0])
+df_ALMShock = utility.getALMShock(df_PVCF, df_getfit, pbase=0.5, pshock=0.005)
+ft, x = utility.getFactorTables(
+    df_forcast, df_PVCF,
+    df_ALMShock['i_base'], df_ALMShock['i_shock'],
+    N_asset=df_ALMShock['n_A'])
 
-ACV, _ = ALM_kit.PV_cashflow(cf=df_PVCF['cf_asset'],t=df_PVCF['t_asset'],fit_ns=df_fitdata['fit_par'].iloc[i_FR_base])
-LCV, _ = ALM_kit.PV_cashflow(cf=df_PVCF['cf_liability'],t=df_PVCF['t_liability'],fit_ns=df_fitdata['fit_par'].iloc[i_FR_base])
-n_ACV = LCV/ACV
-
-t_sc1, t_sc2, x = getFactorTables(df_fitdata,df_PVCF,i_FR_base,i_FR_WCS,N_asset=n_ACV)
-
-
-#%% Dash start up
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
-
-navbar = dbc.NavbarSimple(
-    children=[
-        dbc.NavItem(dbc.NavLink("Link", href="#")),
-        dbc.DropdownMenu(
-            nav=True,
-            in_navbar=True,
-            label="Menu",
-            children=[
-                dbc.DropdownMenuItem("Entry 1"),
-                dbc.DropdownMenuItem("Entry 2"),
-                dbc.DropdownMenuItem(divider=True),
-                dbc.DropdownMenuItem("Entry 3"),
-            ],
-        ),
-    ],
-    brand="Demo",
-    brand_href="#",
-    sticky="top",
-)
-
-#%% Dash components
-
+#%%
+##### Graph of stochatsic simulations - graph
 Graph = dbc.Col([
     dcc.Graph(
         id='graph_YCSimulate',
         figure=f,
         style={'height': '600px'})])
 
-StocLab_Timer = dcc.Slider(
-    id='t_range',
-    min=0,
-    max=df_getfit['t_cal'].shape[0]-1,
-    step=1,
-    value=df_getfit['t_cal'].shape[0]-1,)
-
-YC_Shock_RatioButton = dcc.RadioItems(
+#### Stochatsic simulation of YC
+YC_Shock_RatioButton = dcc.RadioItems(  # Shock scenarios select - button
     options=[
         {'label': 'Systemic', 'value': 'Sys'},
         {'label': 'Key duration', 'value': 'KDur'}
     ],
     value='Sys',
-    labelStyle={'display': 'inline-block'}
+    labelStyle={'display': 'inline-block'},
+    style={'margin-top': '20px'}
 )
 
-StocLab_DurationShock = dbc.Row(
+StocLab_DurationShock = dbc.Row(  # Key duration shock - input box
     [
         html.Div(
             [
@@ -111,19 +78,12 @@ StocLab_DurationShock = dbc.Row(
                 )
             ], style={'columnCount': 2}
         )
-    ]
-)
-
-ALM_Strategy_RatioButton = dcc.RadioItems(
-    options=[
-        {'label': 'Duration Match', 'value': 'DUR'},
-        {'label': 'Custom', 'value': 'CS'}
     ],
-    value='CS',
-    labelStyle={'display': 'inline-block'}
+    style={'margin-top': '20px'}
 )
 
-ALM_Asset = dbc.Row(
+#### Asset mix selection
+ALM_Asset = dbc.Row(  # Asset input box - input
     [
         html.Div(
             [
@@ -139,17 +99,21 @@ ALM_Asset = dbc.Row(
         #html.Button('Duration match', id='Op'),
         html.Div(id='asset_dur', children=''),
         html.Div(id='liability_dur', children='')
-    ]
+    ],style={'margin-top': '20px'}
 )
 
-ALM_Prob = dcc.Slider(
-    id='p_range',
-    min=0,
-    max=1,
-    step=0.01,
-    value=0)
+ALM_Strategy_RatioButton = dcc.RadioItems(  # Asset strategy selection - button
+    options=[
+        {'label': 'Duration Match', 'value': 'DUR'},
+        {'label': 'Custom', 'value': 'CS'}
+    ],
+    value='CS',
+    labelStyle={'display': 'inline-block'},
+    style={'margin-top': '20px'}
+)
 
-#%% Dash layout
+#%% Dash start up
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
 body = dbc.Container(
     [
@@ -157,23 +121,15 @@ body = dbc.Container(
         dbc.Row(
             [
                 dbc.Col(
-                    [html.Center(
-                        [html.H5(id='L0Col_Title', children='Base scenario')]),
-                        html.Div(id='time_range_select',
-                                 children='Time stamp: _ '),
-                        StocLab_Timer,  # Base scenario (best estimate)
+                    [
                         html.Center(
-                            [html.H5(id='LCol_Title', children='YC Shocks')]),
-                        YC_Shock_RatioButton,  # Button to select whole curve or key duration shock
-                        StocLab_DurationShock,  # Shock to specific duration
-                        html.Center(
-                            [html.H5(id='L2Col_Title', children='Asset mix', style={
-                                     'padding': 10})]
-                    ),
-                        # Button to select strategy (custom vs duration match)
+                            [html.H5(id='L0Col_Title', children='Stochastic YC simulator')],style={'margin-top': '20px'}),
+                        YC_Shock_RatioButton,
+                        StocLab_DurationShock,
+                        html.Center([html.H5(id='L1Col_Title', children='Asset mix')],style={'margin-top': '20px'}),
                         ALM_Strategy_RatioButton,
-                        ALM_Asset  # Assigning initial weight
-                        #Button to submit
+                        ALM_Asset,
+                        html.Button('Submit', id='button',style={'margin-top': '20px','width':"100%"})
                     ], style={'border': '1px solid', 'margin': '20px'}
                 ),
                 dbc.Col(
@@ -183,43 +139,25 @@ body = dbc.Container(
                                 label='Portfolio', children=[
                                     html.Center(
                                         [html.H5(id='RCol_Title', children='ALM Analytics')]),
-                                    # Return: YTM
                                     html.Div(id='Return_Port',
                                              children='Return: _ YTM'),
-                                    # Return: YTM
                                     html.Div(id='Risk_Port',
                                              children='Risk: _ 5perc FR'),
-                                    # Return: YTM
-                                    html.Div(
-                                        id='Sharpe', children='Sharpe: _')
+                                    html.Div(id='Sharpe', children='Sharpe: _')
+                                ]
                             ),
                             dcc.Tab(
-                                label='VaR', children=[
-                                    ]
+                                label='VaR', children=[dcc.Graph(figure=ft)]
                             )
                         ])
                     ], style={'border': '1px solid', 'margin': '20px'}
                 )
             ]
-        ),
-        dbc.Row(
-            [dbc.Col(
-                html.Center(
-                    [
-                        html.Button('Submit', id='button', style={
-                            'width': '100%', 'margin-top': '50px'})
-                    ]
-                )
-            )
-            ]
         )
     ]
 )
 
-app.layout = html.Div([navbar, body])
-
-#%% Call back app
-
+app.layout = html.Div([body])
 
 #%% Launch
 app.run_server(debug=True)
