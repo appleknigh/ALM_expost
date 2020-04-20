@@ -95,7 +95,7 @@ def forecast(getfit_data, stoc_simulate_data, itime=0, N=5000, delphi=False):
         Var_fit_par[i][3])(tfit) for i in range(N)])
 
     return {'tfit': tfit, 'yfit_t1': yfit_t1, 'yfit_t2': yfit_t2, 'yfit_t2_stochastic': yfit_t2_stochastic,
-            'Var_fit_par': Var_fit_par}
+            'Var_fit_par': Var_fit_par,'fit_par':fit_par2}
 
 def PVCashflow_AL(forecast_data, bond_weight=[1.8, 0.2, 2.5], N=5000):
 
@@ -115,21 +115,26 @@ def PVCashflow_AL(forecast_data, bond_weight=[1.8, 0.2, 2.5], N=5000):
     cf_liability, t_liability = ALM_kit.liability_cashflow(
         df_mort.loc[60:]['Total'], 3000*12)
 
+    LCF_base,LDur_base = ALM_kit.PV_cashflow(cf_liability, t_liability,
+                               fit_ns=forecast_data['fit_par'])
+    ACF_base,ADur_base = ALM_kit.PV_cashflow(cf_singleasset, t_bond_L,
+                               fit_ns=forecast_data['fit_par'])
+                               
+    n_A = LCF_base/ACF_base
+
     #PV
     LCF = [ALM_kit.PV_cashflow(cf_liability, t_liability,
                                fit_ns=forecast_data['Var_fit_par'][i]) for i in range(N)]
-    ACF = [ALM_kit.PV_cashflow(cf_singleasset, t_bond_L,
+    ACF = [ALM_kit.PV_cashflow(cf_singleasset*n_A, t_bond_L,
                                fit_ns=forecast_data['Var_fit_par'][i]) for i in range(N)]
-    ACFP = np.array(ACF)[:, 0]/np.mean(np.array(ACF)[:, 0])
-    LCFP = np.array(LCF)[:, 0]/np.mean(np.array(LCF)[:, 0])
-    return {'cf_asset': cf_singleasset, 'cf_liability': cf_liability, 't_asset': t_bond_L, 't_liability': t_liability, 'ACFP': ACFP, 'LCFP': LCFP}
+    return {'cf_asset': cf_singleasset, 'cf_liability': cf_liability, 't_asset': t_bond_L, 't_liability': t_liability, 'ACFP': np.array(ACF)[:,0], 'LCFP': np.array(LCF)[:,0],'LDur':LDur_base,'ADur':ADur_base}
 
-def graph(df_forcast, df_PVCF, N=5000):
+def graph(df_forcast, df_PVCF, pBSC=0.95, pWCS=0.05,N=5000):
     #Initiate parameters
     N = 5000
     FR = df_PVCF['ACFP']/df_PVCF['LCFP']
-    i_FR_WCS = FR.argsort()[np.int(np.ceil(0.05*N)-1)]
-    i_FR_BCS = FR.argsort()[np.int(np.ceil(0.95*N)-1)]
+    i_FR_WCS = FR.argsort()[np.int(np.ceil(pWCS*N)-1)]
+    i_FR_BCS = FR.argsort()[np.int(np.ceil(pBSC*N)-1)]
 
     tfit = df_forcast['tfit']
     yfit_t2 = df_forcast['yfit_t2']
@@ -138,7 +143,8 @@ def graph(df_forcast, df_PVCF, N=5000):
     ACFP = df_PVCF['ACFP']
 
     # Graphing
-    x = [LCFP.min(), ACFP.max()]
+    x_min = np.min([LCFP.min(), ACFP.min()])
+    x_max = np.max([LCFP.max(), ACFP.max()])
     f_stochastic = make_subplots(rows=2, cols=2, specs=[[{'rowspan': 2}, {}],
                                                         [None, {}]],
                                  subplot_titles=("Stochastic Yeild Curve", "PV Asset and Liability", "Funding ratio"))
@@ -146,13 +152,13 @@ def graph(df_forcast, df_PVCF, N=5000):
     #Left Pannel: YC Graphing
     YC_BE = go.Scatter(x=tfit, y=yfit_t2, line=dict(color='black', width=1))
     YC_BE_WCS = go.Scatter(x=tfit, y=yfit_t2_stochastic[i_FR_WCS],
-                           line=dict(color='Red', width=1, dash='dash'), opacity=0.5)
+                           line=dict(color='Red', width=1, dash='dash'))
     YC_BE_BCS = go.Scatter(x=tfit, y=yfit_t2_stochastic[i_FR_BCS],
                            line=dict(color='Green', width=1, dash='dash'), opacity=0.5)
     YC_SimUpper = go.Scatter(x=tfit, y=yfit_t2+2*yfit_t2_stochastic.std(axis=0),
-                             line=dict(color='black', width=1, dash='dash'))
+                             line=dict(color='black', width=1, dash='dash'),opacity=0.5)
     YC_SimLower = go.Scatter(x=tfit, y=yfit_t2-2*yfit_t2_stochastic.std(axis=0),
-                             line=dict(color='black', width=1, dash='dash'))
+                             line=dict(color='black', width=1, dash='dash'),opacity=0.5)
 
     f_stochastic.add_trace(YC_BE, row=1, col=1)
     f_stochastic.add_trace(YC_BE_WCS, row=1, col=1)
@@ -172,7 +178,7 @@ def graph(df_forcast, df_PVCF, N=5000):
     AL_BCS = go.Scatter(x=[LCFP[i_FR_BCS]], y=[ACFP[i_FR_BCS]], mode='markers',
                         marker=dict(color='rgba(0, 300, 0, 0.5)', size=8,
                                     line=dict(width=1)))
-    AL_MLine = go.Scatter(x=x, y=x, mode='lines',
+    AL_MLine = go.Scatter(x=[x_min,x_max], y=[x_min,x_max], mode='lines',
                           line=dict(color='black', width=1))
 
     f_stochastic.add_trace(AL_Corr, row=1, col=2)
@@ -203,10 +209,11 @@ def graph(df_forcast, df_PVCF, N=5000):
 
     return f_stochastic
 
-def getFactorTables(df_forcast,df_PVCF,i_base,i_shock,N_asset = 1, N_liability = 1):
+def getFactorTables(df_forcast,df_PVCF,i_shock,i_base=1,N_asset = 1, N_liability = 1):
     #Factor analysis
+    df_forcast_par = np.vstack((df_forcast['fit_par'],df_forcast['Var_fit_par']))
     test_asset, test_liabiltiy, dur_asset_t2, dur_liabilities_t2 = ALM_kit.FactorAnalysis(
-        df_forcast['Var_fit_par'], t1=i_base, t2=i_shock,
+        df_forcast_par, t1=i_base, t2=i_shock+1,
         cf_asset=df_PVCF['cf_asset']*N_asset, t_asset=df_PVCF['t_asset'],
         cf_liability=df_PVCF['cf_liability']*N_liability, t_liability=df_PVCF['t_liability'])
 
@@ -271,11 +278,14 @@ def getALMShock(df_PVCF,df_fitdata,N=5000,pbase=0.5,pshock=0.05):
     FR = df_PVCF['ACFP']/df_PVCF['LCFP']
     i_FR_WCS = FR.argsort()[np.int(np.ceil(pshock*N)-1)]
     i_FR_base = FR.argsort()[np.int(np.ceil(pbase*N)-1)]
+    Risk_FR = FR[i_FR_WCS]
 
     APV, _ = ALM_kit.PV_cashflow(cf=df_PVCF['cf_asset'],t=df_PVCF['t_asset'],fit_ns=df_fitdata['fit_par'].iloc[-1])
     LPV, _ = ALM_kit.PV_cashflow(cf=df_PVCF['cf_liability'],t=df_PVCF['t_liability'],fit_ns=df_fitdata['fit_par'].iloc[-1])
+    YTM_Asset = ALM_kit.bond_ytm(price=APV,cf=df_PVCF['cf_asset'],dt=df_PVCF['t_asset'])
+    YTM_Liability = ALM_kit.bond_ytm(price=LPV,cf=df_PVCF['cf_liability'],dt=df_PVCF['t_liability'])
     n_APV = LPV/APV
-    return {'i_base':i_FR_base, 'i_shock':i_FR_WCS, 'n_A':n_APV}
+    return {'i_base':i_FR_base, 'i_shock':i_FR_WCS, 'n_A':n_APV,'YTM_A':YTM_Asset,"YTM_L":YTM_Liability,'Risk_FR':Risk_FR}
 
 #%%
 if __name__ == '__main__':

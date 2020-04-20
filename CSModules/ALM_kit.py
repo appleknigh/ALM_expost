@@ -78,7 +78,7 @@ def FactorAnalysis(fit_par, t1, t2, cf_asset, t_asset, cf_liability, t_liability
 
 def optimize_duration(x_weights,cf,t,fit_par_t,dur_liabilities):
     cf_singleasset = np.dot(np.abs(x_weights), cf)
-    PV_asset_single, dur_asset = PV_cashflow(cf_singleasset, t, fit_ns=fit_par_t)
+    _, dur_asset = PV_cashflow(cf_singleasset, t, fit_ns=fit_par_t)
     dur_diff = abs(dur_asset-dur_liabilities)
     return dur_diff
 
